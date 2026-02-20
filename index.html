@@ -1,0 +1,757 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=yes">
+    <title>Чат с Дедом Морозом</title>
+    <!-- Firebase SDK (версия 8) -->
+    <script src="https://www.gstatic.com/firebasejs/8.10.1/firebase-app.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/8.10.1/firebase-database.js"></script>
+    <style>
+        * {
+            box-sizing: border-box;
+            margin: 0;
+            padding: 0;
+            font-family: 'Segoe UI', Roboto, system-ui, sans-serif;
+        }
+
+        body {
+            min-height: 100vh;
+            background: linear-gradient(145deg, #0b2b3f 0%, #1a4b6d 100%);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            padding: 12px;
+        }
+
+        /* Основной контейнер приложения */
+        .app-container {
+            width: 100%;
+            max-width: 1200px;
+            height: 85vh;
+            max-height: 900px;
+            background: rgba(255, 255, 255, 0.1);
+            backdrop-filter: blur(15px);
+            -webkit-backdrop-filter: blur(15px);
+            border-radius: 32px;
+            box-shadow: 0 25px 50px -10px rgba(0, 0, 0, 0.5);
+            overflow: hidden;
+            border: 2px solid rgba(255, 255, 255, 0.2);
+            transition: all 0.3s;
+        }
+
+        /* ЭКРАН ПРИВЕТСТВИЯ */
+        .welcome-screen {
+            height: 100%;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            padding: 24px;
+            background: url('data:image/svg+xml;utf8,<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100" opacity="0.2"><path fill="white" d="M50 10 L60 40 L90 40 L65 60 L75 90 L50 70 L25 90 L35 60 L10 40 L40 40 Z"/></svg>');
+            background-size: 80px;
+            color: white;
+            text-align: center;
+        }
+
+        .glowing-title {
+            font-size: clamp(1.8rem, 7vw, 3rem);
+            font-weight: 800;
+            margin-bottom: 30px;
+            text-shadow: 0 0 10px #ffd700, 0 0 20px #ff6347, 0 0 40px #ff4500;
+            animation: glow 2s ease-in-out infinite alternate;
+            line-height: 1.3;
+        }
+
+        @keyframes glow {
+            from { text-shadow: 0 0 10px #fff, 0 0 20px #ffd700; }
+            to { text-shadow: 0 0 20px #ff4500, 0 0 40px #ff6347, 0 0 60px #ffd700; }
+        }
+
+        .input-field {
+            width: 100%;
+            max-width: 400px;
+            padding: 18px 20px;
+            font-size: 1.2rem;
+            border: none;
+            border-radius: 60px;
+            background: rgba(255,255,255,0.2);
+            backdrop-filter: blur(10px);
+            color: white;
+            outline: 2px solid rgba(255,215,0,0.5);
+            margin: 20px 0;
+            transition: 0.2s;
+        }
+        .input-field::placeholder { color: rgba(255,255,255,0.7); }
+        .input-field:focus { outline-color: gold; background: rgba(255,255,255,0.3); }
+
+        .btn {
+            background: linear-gradient(45deg, #e52e2e, #ff8c00);
+            border: none;
+            padding: 16px 40px;
+            font-size: 1.4rem;
+            font-weight: bold;
+            color: white;
+            border-radius: 50px;
+            cursor: pointer;
+            box-shadow: 0 8px 20px rgba(230,0,0,0.4);
+            transition: transform 0.2s, box-shadow 0.2s;
+            border: 2px solid rgba(255,255,255,0.3);
+        }
+        .btn:active { transform: scale(0.95); box-shadow: 0 4px 10px rgba(230,0,0,0.6); }
+
+        /* ОБЩИЙ СТИЛЬ ЧАТОВ (пользовательский и деда мороза) */
+        .chat-screen {
+            height: 100%;
+            display: flex;
+            flex-direction: column;
+            background: rgba(0, 20, 40, 0.6);
+            backdrop-filter: blur(5px);
+            color: white;
+        }
+
+        .chat-header {
+            padding: 18px 20px;
+            background: rgba(0, 0, 0, 0.4);
+            border-bottom: 2px solid rgba(255,255,255,0.1);
+            display: flex;
+            align-items: center;
+            gap: 15px;
+            font-size: 1.3rem;
+            font-weight: bold;
+        }
+        .chat-header .back-btn {
+            background: none;
+            border: none;
+            font-size: 1.8rem;
+            cursor: pointer;
+            color: white;
+            display: flex;
+            align-items: center;
+            padding: 0 5px;
+        }
+        .chat-header .user-status { font-size: 0.9rem; opacity: 0.8; margin-left: auto; }
+
+        .messages-container {
+            flex: 1;
+            overflow-y: auto;
+            padding: 20px 15px;
+            display: flex;
+            flex-direction: column;
+            gap: 8px;
+            scroll-behavior: smooth;
+        }
+
+        /* Разделитель дат */
+        .date-divider {
+            text-align: center;
+            margin: 15px 0 5px;
+            font-size: 0.85rem;
+            color: #ffd966;
+            background: rgba(255,255,255,0.1);
+            padding: 5px 10px;
+            border-radius: 30px;
+            align-self: center;
+            backdrop-filter: blur(5px);
+        }
+
+        .message {
+            max-width: 80%;
+            padding: 12px 18px;
+            border-radius: 25px;
+            word-break: break-word;
+            position: relative;
+            animation: fadeIn 0.2s;
+        }
+        .message.my-message {
+            align-self: flex-end;
+            background: #2b5278;
+            border-bottom-right-radius: 5px;
+        }
+        .message.their-message {
+            align-self: flex-start;
+            background: #3a3f5e;
+            border-bottom-left-radius: 5px;
+        }
+        .message.deleted-message {
+            background: #4d4d4d;
+            opacity: 0.6;
+            font-style: italic;
+            text-align: center;
+        }
+        .message .time {
+            font-size: 0.7rem;
+            opacity: 0.7;
+            margin-top: 4px;
+            text-align: right;
+        }
+        .delete-btn {
+            position: absolute;
+            top: -5px;
+            right: -5px;
+            background: crimson;
+            color: white;
+            border: none;
+            border-radius: 50%;
+            width: 24px;
+            height: 24px;
+            font-size: 16px;
+            cursor: pointer;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            opacity: 0;
+            transition: opacity 0.2s;
+        }
+        .message:hover .delete-btn { opacity: 1; }
+
+        .typing-indicator {
+            padding: 8px 18px;
+            font-style: italic;
+            color: #ffd966;
+            background: rgba(255,255,255,0.1);
+            border-radius: 30px;
+            align-self: flex-start;
+            margin-top: 5px;
+        }
+
+        .input-area {
+            display: flex;
+            padding: 15px;
+            background: rgba(0, 0, 0, 0.3);
+            gap: 10px;
+            border-top: 2px solid rgba(255,255,255,0.1);
+        }
+        .input-area input {
+            flex: 1;
+            padding: 15px 20px;
+            border: none;
+            border-radius: 40px;
+            background: rgba(255,255,255,0.15);
+            color: white;
+            font-size: 1rem;
+            outline: 2px solid transparent;
+        }
+        .input-area input:focus { outline-color: #ffb347; }
+        .input-area button {
+            background: #ff8c00;
+            border: none;
+            border-radius: 40px;
+            width: 60px;
+            font-size: 1.8rem;
+            color: white;
+            cursor: pointer;
+            transition: 0.2s;
+        }
+        .input-area button:active { background: #e07b00; }
+
+        /* СПЕЦИАЛЬНО ДЛЯ ДЕДА МОРОЗА (красная тема) */
+        .santa-theme .chat-header { background: #8b1a1a; }
+        .santa-theme .message.my-message { background: #a52a2a; }
+        .santa-theme .message.their-message { background: #5a2e2e; }
+        .santa-theme .input-area button { background: #c93e3e; }
+
+        /* Левый сайдбар для Деда Мороза (список пользователей) */
+        .santa-layout {
+            display: flex;
+            height: 100%;
+            flex-direction: row;
+        }
+        .user-list {
+            width: 250px;
+            background: rgba(0,0,0,0.5);
+            border-right: 2px solid rgba(255,255,255,0.2);
+            overflow-y: auto;
+            display: flex;
+            flex-direction: column;
+        }
+        .user-item {
+            padding: 15px;
+            border-bottom: 1px solid rgba(255,255,255,0.1);
+            cursor: pointer;
+            transition: background 0.2s;
+        }
+        .user-item:hover { background: rgba(255,255,255,0.2); }
+        .user-item.active { background: #7b2f2f; }
+        .user-item .name { font-weight: bold; }
+        .user-item .last-seen { font-size: 0.75rem; opacity: 0.7; }
+        .user-item .typing-status { font-size: 0.7rem; color: #90ee90; }
+
+        .chat-area {
+            flex: 1;
+            display: flex;
+            flex-direction: column;
+        }
+
+        /* Адаптация под мобильные */
+        @media (max-width: 700px) {
+            .santa-layout { flex-direction: column; }
+            .user-list { width: 100%; height: 120px; flex-direction: row; overflow-x: auto; border-right: none; border-bottom: 2px solid rgba(255,255,255,0.2); }
+            .user-item { min-width: 150px; border-bottom: none; border-right: 1px solid rgba(255,255,255,0.1); }
+        }
+
+        @keyframes fadeIn { from { opacity: 0; transform: translateY(5px); } to { opacity: 1; transform: translateY(0); } }
+
+        .hidden { display: none !important; }
+    </style>
+</head>
+<body>
+    <div class="app-container" id="appContainer">
+        <!-- Экран приветствия (вход) -->
+        <div id="welcomeScreen" class="welcome-screen">
+            <h1 class="glowing-title">Начни общение с Дедом Морозом прямо сейчас!</h1>
+            <input type="text" id="usernameInput" class="input-field" placeholder="Твоё имя" maxlength="30" autocomplete="off">
+            <button class="btn" id="startChatBtn">Продолжить</button>
+        </div>
+
+        <!-- Экран чата пользователя (синий стиль) -->
+        <div id="userChatScreen" class="chat-screen hidden">
+            <div class="chat-header">
+                <span>🎅 Дед Мороз</span>
+                <span class="user-status" id="userTypingStatus"></span>
+            </div>
+            <div class="messages-container" id="userMessages"></div>
+            <div class="input-area">
+                <input type="text" id="userMessageInput" placeholder="Напиши письмо..." autocomplete="off">
+                <button id="userSendBtn">➤</button>
+            </div>
+        </div>
+
+        <!-- Экран чата Деда Мороза (красный стиль) -->
+        <div id="santaChatScreen" class="chat-screen santa-theme hidden">
+            <div class="santa-layout">
+                <div class="user-list" id="santaUserList"></div>
+                <div class="chat-area">
+                    <div class="chat-header" id="santaChatHeader">
+                        <button class="back-btn" id="santaMobileBack" style="display: none;">←</button>
+                        <span id="santaCurrentUser">Выберите пользователя</span>
+                        <span class="user-status" id="santaTypingStatus"></span>
+                    </div>
+                    <div class="messages-container" id="santaMessages"></div>
+                    <div class="input-area">
+                        <input type="text" id="santaMessageInput" placeholder="Ваш ответ..." autocomplete="off">
+                        <button id="santaSendBtn">➤</button>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        // ---------- ИНИЦИАЛИЗАЦИЯ FIREBASE ----------
+        const firebaseConfig = {
+            apiKey: "AIzaSyAu_wfaRhTsWNbsyFYmEigopqJck7ynxlU",
+            authDomain: "messeger-0wo2h4.firebaseapp.com",
+            databaseURL: "https://messeger-0wo2h4-default-rtdb.firebaseio.com",
+            projectId: "messeger-0wo2h4",
+            storageBucket: "messeger-0wo2h4.firebasestorage.app",
+            messagingSenderId: "1057251395030",
+            appId: "1:1057251395030:web:86f8f718ed938055e29077"
+        };
+        firebase.initializeApp(firebaseConfig);
+        const db = firebase.database();
+
+        // ---------- ГЛОБАЛЬНЫЕ ПЕРЕМЕННЫЕ ----------
+        let currentUser = null;               // { name, role: 'user' или 'santa' }
+        let currentChatWith = null;            // для Деда Мороза - имя выбранного пользователя
+        let typingTimeout = null;
+        const messagesRef = db.ref('messages');
+        const usersRef = db.ref('users');
+        const typingRef = db.ref('typing');
+
+        // DOM элементы
+        const welcomeScreen = document.getElementById('welcomeScreen');
+        const userChatScreen = document.getElementById('userChatScreen');
+        const santaChatScreen = document.getElementById('santaChatScreen');
+        const usernameInput = document.getElementById('usernameInput');
+        const startBtn = document.getElementById('startChatBtn');
+
+        // Пользовательский чат
+        const userMessagesDiv = document.getElementById('userMessages');
+        const userMessageInput = document.getElementById('userMessageInput');
+        const userSendBtn = document.getElementById('userSendBtn');
+        const userTypingStatus = document.getElementById('userTypingStatus');
+
+        // Чат Деда Мороза
+        const santaUserList = document.getElementById('santaUserList');
+        const santaMessagesDiv = document.getElementById('santaMessages');
+        const santaMessageInput = document.getElementById('santaMessageInput');
+        const santaSendBtn = document.getElementById('santaSendBtn');
+        const santaCurrentUserSpan = document.getElementById('santaCurrentUser');
+        const santaTypingStatus = document.getElementById('santaTypingStatus');
+        const santaMobileBack = document.getElementById('santaMobileBack');
+
+        // ---------- ВСПОМОГАТЕЛЬНЫЕ ФУНКЦИИ ----------
+        // Форматирование времени сообщения с учётом today/yesterday/date (МСК)
+        function formatMessageTime(timestamp) {
+            if (!timestamp) return '';
+            const date = new Date(timestamp);
+            const now = new Date();
+            // Приводим к UTC+3 (МСК) для корректного сравнения дат
+            const mskOffset = 3 * 60; // +3 часа в минутах
+            const localOffset = date.getTimezoneOffset(); // смещение местного времени в минутах
+            const mskDate = new Date(date.getTime() + (localOffset + mskOffset) * 60000);
+            const mskNow = new Date(now.getTime() + (now.getTimezoneOffset() + mskOffset) * 60000);
+
+            const isToday = mskDate.toDateString() === mskNow.toDateString();
+            const isYesterday = new Date(mskNow.setDate(mskNow.getDate() - 1)).toDateString() === mskDate.toDateString();
+
+            const hours = date.getHours().toString().padStart(2,'0');
+            const minutes = date.getMinutes().toString().padStart(2,'0');
+            const timeStr = `${hours}:${minutes}`;
+
+            if (isToday) return `сегодня в ${timeStr}`;
+            if (isYesterday) return `вчера в ${timeStr}`;
+            const day = date.getDate().toString().padStart(2,'0');
+            const month = (date.getMonth()+1).toString().padStart(2,'0');
+            const year = date.getFullYear();
+            return `${day}.${month}.${year} в ${timeStr}`;
+        }
+
+        // Форматирование lastSeen (аналогично, но без времени, если нужно)
+        function formatLastSeen(timestamp) {
+            if (!timestamp) return 'никогда';
+            const date = new Date(timestamp);
+            const now = new Date();
+            const mskOffset = 3 * 60;
+            const localOffset = date.getTimezoneOffset();
+            const mskDate = new Date(date.getTime() + (localOffset + mskOffset) * 60000);
+            const mskNow = new Date(now.getTime() + (now.getTimezoneOffset() + mskOffset) * 60000);
+
+            const diffMs = mskNow - mskDate;
+            const diffSec = Math.floor(diffMs / 1000);
+            const diffMin = Math.floor(diffSec / 60);
+            const diffHour = Math.floor(diffMin / 60);
+            const diffDay = Math.floor(diffHour / 24);
+
+            if (diffSec < 60) return 'только что';
+            if (diffMin < 60) return `${diffMin} мин. назад`;
+            if (diffHour < 24) return `сегодня в ${date.getHours().toString().padStart(2,'0')}:${date.getMinutes().toString().padStart(2,'0')}`;
+            if (diffDay < 2) return `вчера в ${date.getHours().toString().padStart(2,'0')}:${date.getMinutes().toString().padStart(2,'0')}`;
+            return `${date.getDate().toString().padStart(2,'0')}.${(date.getMonth()+1).toString().padStart(2,'0')}.${date.getFullYear()} в ${date.getHours().toString().padStart(2,'0')}:${date.getMinutes().toString().padStart(2,'0')}`;
+        }
+
+        // Получить дату для разделителя (только DD.MM.YYYY)
+        function getDateString(timestamp) {
+            const date = new Date(timestamp);
+            const day = date.getDate().toString().padStart(2,'0');
+            const month = (date.getMonth()+1).toString().padStart(2,'0');
+            const year = date.getFullYear();
+            return `${day}.${month}.${year}`;
+        }
+
+        // Обновление lastSeen пользователя
+        function updateLastSeen(username) {
+            if (!username || username === 'Дед Мороз') return;
+            usersRef.child(username).set({ name: username, lastSeen: Date.now() });
+        }
+
+        // ---------- УПРАВЛЕНИЕ СТАТУСОМ ПЕЧАТАНИЯ ----------
+        function setTypingStatus(isTyping, forUser = null) {
+            if (!currentUser) return;
+            if (currentUser.role === 'user') {
+                const typingNode = typingRef.child(currentUser.name);
+                if (isTyping) {
+                    typingNode.set(true);
+                    typingNode.onDisconnect().remove();
+                } else {
+                    typingNode.remove();
+                }
+            } else if (currentUser.role === 'santa' && forUser) {
+                const typingNode = typingRef.child(`ded_${forUser}`);
+                if (isTyping) {
+                    typingNode.set(true);
+                    typingNode.onDisconnect().remove();
+                } else {
+                    typingNode.remove();
+                }
+            }
+        }
+
+        // ---------- ОТПРАВКА СООБЩЕНИЯ ----------
+        function sendMessage(text, to) {
+            if (!currentUser || !text.trim()) return;
+            const from = currentUser.name;
+            const message = {
+                from: from,
+                to: to,
+                text: text.trim(),
+                timestamp: Date.now(),
+                deleted: false
+            };
+            messagesRef.push(message);
+            updateLastSeen(from);
+            setTypingStatus(false, to);
+        }
+
+        // ---------- ОТОБРАЖЕНИЕ СООБЩЕНИЙ С РАЗДЕЛИТЕЛЯМИ ПО ДАТАМ ----------
+        function renderMessagesWithDividers(messages, container, isSantaView = false) {
+            container.innerHTML = '';
+            if (!messages.length) return;
+
+            let lastDate = null;
+            messages.forEach(msg => {
+                const msgDate = getDateString(msg.timestamp);
+                if (msgDate !== lastDate) {
+                    const divider = document.createElement('div');
+                    divider.classList.add('date-divider');
+                    divider.textContent = msgDate;
+                    container.appendChild(divider);
+                    lastDate = msgDate;
+                }
+
+                const isMyMessage = (msg.from === currentUser.name);
+                // Для Деда Мороза удалять могут любые сообщения
+                const showDelete = isSantaView && (currentUser.role === 'santa');
+                const msgEl = createMessageElement(msg, isMyMessage, showDelete, msg.id);
+                container.appendChild(msgEl);
+            });
+            container.scrollTop = container.scrollHeight;
+        }
+
+        function createMessageElement(message, isMyMessage, showDelete = false, messageId) {
+            const div = document.createElement('div');
+            div.classList.add('message');
+            if (message.deleted) {
+                div.classList.add('deleted-message');
+                div.textContent = '❄️ Сообщение удалено';
+            } else {
+                div.classList.add(isMyMessage ? 'my-message' : 'their-message');
+                div.textContent = message.text;
+            }
+
+            const timeSpan = document.createElement('div');
+            timeSpan.classList.add('time');
+            timeSpan.textContent = formatMessageTime(message.timestamp);
+            div.appendChild(timeSpan);
+
+            if (showDelete && !message.deleted) {
+                const delBtn = document.createElement('button');
+                delBtn.classList.add('delete-btn');
+                delBtn.innerHTML = '✕';
+                delBtn.onclick = (e) => {
+                    e.stopPropagation();
+                    if (confirm('Удалить сообщение?')) {
+                        messagesRef.child(messageId).update({ deleted: true });
+                    }
+                };
+                div.appendChild(delBtn);
+            }
+            return div;
+        }
+
+        // ---------- ПОДПИСКА НА СООБЩЕНИЯ ПОЛЬЗОВАТЕЛЯ (чат с Дедом Морозом) ----------
+        function subscribeUserMessages() {
+            const userName = currentUser.name;
+            const query = messagesRef.orderByChild('timestamp');
+            query.on('value', (snapshot) => {
+                const messages = [];
+                snapshot.forEach(child => {
+                    const msg = child.val();
+                    msg.id = child.key;
+                    if ((msg.from === userName && msg.to === 'Дед Мороз') || (msg.from === 'Дед Мороз' && msg.to === userName)) {
+                        messages.push(msg);
+                    }
+                });
+                messages.sort((a,b) => a.timestamp - b.timestamp);
+                renderMessagesWithDividers(messages, userMessagesDiv, false);
+            });
+        }
+
+        // ---------- ПОДПИСКА НА СТАТУС ПЕЧАТАНИЯ ДЛЯ ПОЛЬЗОВАТЕЛЯ ----------
+        function subscribeUserTyping() {
+            const userName = currentUser.name;
+            typingRef.child(`ded_${userName}`).on('value', (snap) => {
+                userTypingStatus.textContent = snap.val() ? 'Дед Мороз печатает...' : '';
+            });
+        }
+
+        // ---------- ПОДПИСКА НА ПОЛЬЗОВАТЕЛЕЙ ДЛЯ ДЕДА МОРОЗА (список) ----------
+        function subscribeSantaUserList() {
+            // Собираем уникальных пользователей из сообщений
+            messagesRef.on('value', (snapshot) => {
+                const usersSet = new Set();
+                snapshot.forEach(child => {
+                    const msg = child.val();
+                    if (msg.from === 'Дед Мороз' && msg.to && msg.to !== 'Дед Мороз') usersSet.add(msg.to);
+                    if (msg.to === 'Дед Мороз' && msg.from && msg.from !== 'Дед Мороз') usersSet.add(msg.from);
+                });
+                renderUserList(Array.from(usersSet));
+            });
+        }
+
+        function renderUserList(usernames) {
+            santaUserList.innerHTML = '';
+            usernames.forEach(name => {
+                if (name === 'Дед Мороз') return;
+                const userDiv = document.createElement('div');
+                userDiv.classList.add('user-item');
+                if (currentChatWith === name) userDiv.classList.add('active');
+                userDiv.dataset.username = name;
+
+                const nameSpan = document.createElement('div');
+                nameSpan.classList.add('name');
+                nameSpan.textContent = name;
+
+                const lastSeenSpan = document.createElement('div');
+                lastSeenSpan.classList.add('last-seen');
+                lastSeenSpan.id = `lastSeen-${name}`;
+                // Подписка на изменения lastSeen
+                usersRef.child(name).on('value', (snap) => {
+                    const data = snap.val();
+                    const lastSeen = data && data.lastSeen ? formatLastSeen(data.lastSeen) : 'нет данных';
+                    const span = document.getElementById(`lastSeen-${name}`);
+                    if (span) span.textContent = `был(а) ${lastSeen}`;
+                });
+
+                const typingSpan = document.createElement('div');
+                typingSpan.classList.add('typing-status');
+                typingSpan.id = `typing-${name}`;
+                typingRef.child(name).on('value', (typingSnap) => {
+                    const span = document.getElementById(`typing-${name}`);
+                    if (span) span.textContent = typingSnap.val() ? 'печатает...' : '';
+                });
+
+                userDiv.appendChild(nameSpan);
+                userDiv.appendChild(lastSeenSpan);
+                userDiv.appendChild(typingSpan);
+
+                userDiv.addEventListener('click', () => {
+                    document.querySelectorAll('.user-item').forEach(el => el.classList.remove('active'));
+                    userDiv.classList.add('active');
+                    currentChatWith = name;
+                    santaCurrentUserSpan.textContent = name;
+                    subscribeSantaMessages(name);
+                    if (window.innerWidth <= 700) {
+                        document.querySelector('.user-list').style.display = 'none';
+                        document.querySelector('.chat-area').style.display = 'flex';
+                        santaMobileBack.style.display = 'block';
+                    }
+                });
+                santaUserList.appendChild(userDiv);
+            });
+        }
+
+        // Подписка на сообщения выбранного пользователя для Деда Мороза
+        function subscribeSantaMessages(otherUser) {
+            if (!otherUser) return;
+            messagesRef.off(); // отписываем всё
+            subscribeSantaUserList(); // переподпишем список
+
+            const chatListener = (snapshot) => {
+                refreshSantaMessages(otherUser);
+            };
+            messagesRef.on('value', chatListener);
+            refreshSantaMessages(otherUser);
+            // Подписка на печатание пользователя
+            typingRef.child(otherUser).on('value', (snap) => {
+                santaTypingStatus.textContent = snap.val() ? `${otherUser} печатает...` : '';
+            });
+        }
+
+        function refreshSantaMessages(otherUser) {
+            messagesRef.orderByChild('timestamp').once('value', (snapshot) => {
+                const messages = [];
+                snapshot.forEach(child => {
+                    const msg = child.val();
+                    msg.id = child.key;
+                    if ((msg.from === otherUser && msg.to === 'Дед Мороз') || (msg.from === 'Дед Мороз' && msg.to === otherUser)) {
+                        messages.push(msg);
+                    }
+                });
+                messages.sort((a,b) => a.timestamp - b.timestamp);
+                renderMessagesWithDividers(messages, santaMessagesDiv, true);
+            });
+        }
+
+        // ---------- ЗАГРУЗКА ПРИЛОЖЕНИЯ ----------
+        function loadApp() {
+            const savedName = localStorage.getItem('chatUsername');
+            if (savedName) {
+                if (savedName === 'Дед Мороз') {
+                    enterAsSanta();
+                } else {
+                    enterAsUser(savedName);
+                }
+            } else {
+                welcomeScreen.classList.remove('hidden');
+                userChatScreen.classList.add('hidden');
+                santaChatScreen.classList.add('hidden');
+            }
+        }
+
+        function enterAsUser(name) {
+            currentUser = { name: name, role: 'user' };
+            localStorage.setItem('chatUsername', name);
+            welcomeScreen.classList.add('hidden');
+            santaChatScreen.classList.add('hidden');
+            userChatScreen.classList.remove('hidden');
+            updateLastSeen(name);
+            subscribeUserMessages();
+            subscribeUserTyping();
+
+            userMessageInput.addEventListener('input', () => {
+                setTypingStatus(true);
+                if (typingTimeout) clearTimeout(typingTimeout);
+                typingTimeout = setTimeout(() => setTypingStatus(false), 1500);
+            });
+            userSendBtn.onclick = () => {
+                sendMessage(userMessageInput.value, 'Дед Мороз');
+                userMessageInput.value = '';
+                setTypingStatus(false);
+            };
+            userMessageInput.addEventListener('keypress', (e) => {
+                if (e.key === 'Enter') userSendBtn.click();
+            });
+        }
+
+        function enterAsSanta() {
+            currentUser = { name: 'Дед Мороз', role: 'santa' };
+            localStorage.setItem('chatUsername', 'Дед Мороз');
+            welcomeScreen.classList.add('hidden');
+            userChatScreen.classList.add('hidden');
+            santaChatScreen.classList.remove('hidden');
+            subscribeSantaUserList();
+
+            santaMobileBack.onclick = () => {
+                document.querySelector('.user-list').style.display = 'flex';
+                document.querySelector('.chat-area').style.display = 'none';
+                santaMobileBack.style.display = 'none';
+            };
+
+            santaSendBtn.onclick = () => {
+                if (!currentChatWith) { alert('Выберите пользователя'); return; }
+                sendMessage(santaMessageInput.value, currentChatWith);
+                santaMessageInput.value = '';
+                setTypingStatus(false, currentChatWith);
+            };
+            santaMessageInput.addEventListener('input', () => {
+                if (!currentChatWith) return;
+                setTypingStatus(true, currentChatWith);
+                if (typingTimeout) clearTimeout(typingTimeout);
+                typingTimeout = setTimeout(() => setTypingStatus(false, currentChatWith), 1500);
+            });
+            santaMessageInput.addEventListener('keypress', (e) => {
+                if (e.key === 'Enter') santaSendBtn.click();
+            });
+        }
+
+        // ---------- ОБРАБОТЧИК ВХОДА ----------
+        startBtn.addEventListener('click', () => {
+            const name = usernameInput.value.trim();
+            if (!name) { alert('Введите имя'); return; }
+            if (name === 'Дед Мороз') {
+                enterAsSanta();
+            } else {
+                enterAsUser(name);
+            }
+        });
+
+        usernameInput.addEventListener('keypress', (e) => {
+            if (e.key === 'Enter') startBtn.click();
+        });
+
+        window.onload = loadApp;
+    </script>
+</body>
+</html>
