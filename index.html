@@ -8,6 +8,7 @@
     <script src="https://www.gstatic.com/firebasejs/8.10.1/firebase-app.js"></script>
     <script src="https://www.gstatic.com/firebasejs/8.10.1/firebase-database.js"></script>
     <style>
+        /* Стили без изменений (см. предыдущие версии) */
         * {
             box-sizing: border-box;
             margin: 0;
@@ -38,7 +39,6 @@
             border: 2px solid rgba(255, 255, 255, 0.2);
         }
 
-        /* Экран приветствия */
         .welcome-screen {
             height: 100%;
             display: flex;
@@ -96,7 +96,6 @@
         }
         .btn:active { transform: scale(0.95); box-shadow: 0 4px 10px rgba(230,0,0,0.6); }
 
-        /* Общий стиль чатов */
         .chat-screen {
             height: 100%;
             display: flex;
@@ -339,7 +338,7 @@
         let currentUser = null;
         let currentChatWith = null;          // для Деда Мороза - выбранный пользователь
         let typingTimeout = null;
-        let allMessages = [];                 // кеш всех сообщений (отсортированных по timestamp)
+        let allMessages = [];                 // кеш всех сообщений (отсортированных)
         const messagesRef = db.ref('messages');
         const usersRef = db.ref('users');
         const typingRef = db.ref('typing');
@@ -462,6 +461,13 @@
             setTypingStatus(false, to);
         }
 
+        // ---------- КОМПАРАТОР ДЛЯ СОРТИРОВКИ СООБЩЕНИЙ (ПО ВРЕМЕНИ И ID) ----------
+        function compareMessages(a, b) {
+            if (a.timestamp !== b.timestamp) return a.timestamp - b.timestamp;
+            // если время одинаковое, сортируем по ключу (строки) – это гарантирует порядок создания
+            return (a.id || '').localeCompare(b.id || '');
+        }
+
         // ---------- СОЗДАНИЕ ЭЛЕМЕНТА СООБЩЕНИЯ ----------
         function createMessageElement(message, isMyMessage, showDelete = false, messageId) {
             const div = document.createElement('div');
@@ -499,8 +505,11 @@
             container.innerHTML = '';
             if (!messages.length) return;
 
+            // Сортировка перед отрисовкой (на всякий случай)
+            const sorted = [...messages].sort(compareMessages);
+
             let lastDate = null;
-            messages.forEach(msg => {
+            sorted.forEach(msg => {
                 const msgDate = getDateString(msg.timestamp);
                 if (msgDate !== lastDate) {
                     const divider = document.createElement('div');
@@ -531,7 +540,6 @@
                         messages.push(msg);
                     }
                 });
-                messages.sort((a,b) => a.timestamp - b.timestamp);
                 renderMessages(userMessagesDiv, messages, false);
             });
         }
@@ -557,8 +565,8 @@
                     if (msg.from === 'Дед Мороз' && msg.to && msg.to !== 'Дед Мороз') usersSet.add(msg.to);
                     if (msg.to === 'Дед Мороз' && msg.from && msg.from !== 'Дед Мороз') usersSet.add(msg.from);
                 });
-                // Сортируем всё по времени (хотя Firebase отдаёт в порядке возрастания, перестрахуемся)
-                allMessages.sort((a,b) => a.timestamp - b.timestamp);
+                // Сортируем кеш
+                allMessages.sort(compareMessages);
 
                 // Обновляем список пользователей
                 renderUserList(Array.from(usersSet));
@@ -636,7 +644,6 @@
             } else {
                 santaTypingStatus.textContent = '';
             }
-            // Немедленно отображаем сообщения для выбранного пользователя из кеша
             refreshSantaChat();
         }
 
@@ -650,8 +657,7 @@
                 (msg.from === currentChatWith && msg.to === 'Дед Мороз') ||
                 (msg.from === 'Дед Мороз' && msg.to === currentChatWith)
             );
-            // Сообщения уже отсортированы в allMessages, но для надёжности:
-            filtered.sort((a,b) => a.timestamp - b.timestamp);
+            // Используем renderMessages, который сам отсортирует
             renderMessages(santaMessagesDiv, filtered, true);
         }
 
