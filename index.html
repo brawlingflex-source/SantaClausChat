@@ -136,10 +136,9 @@
             flex-direction: column;
             gap: 8px;
             scroll-behavior: smooth;
-            min-height: 0; /* критически важно для скролла */
+            min-height: 0;
         }
 
-        /* Разделитель дат */
         .date-divider {
             text-align: center;
             margin: 15px 0 5px;
@@ -232,13 +231,11 @@
         }
         .input-area button:active { background: #e07b00; }
 
-        /* Специально для Деда Мороза (красная тема) */
         .santa-theme .chat-header { background: #8b1a1a; }
         .santa-theme .message.my-message { background: #a52a2a; }
         .santa-theme .message.their-message { background: #5a2e2e; }
         .santa-theme .input-area button { background: #c93e3e; }
 
-        /* Левый сайдбар для Деда Мороза */
         .santa-layout {
             display: flex;
             height: 100%;
@@ -268,10 +265,9 @@
             flex: 1;
             display: flex;
             flex-direction: column;
-            min-height: 0; /* критически важно для скролла */
+            min-height: 0;
         }
 
-        /* Адаптация под мобильные */
         @media (max-width: 700px) {
             .santa-layout { flex-direction: column; }
             .user-list { width: 100%; height: 120px; flex-direction: row; overflow-x: auto; border-right: none; border-bottom: 2px solid rgba(255,255,255,0.2); }
@@ -285,7 +281,7 @@
 </head>
 <body>
     <div class="app-container" id="appContainer">
-        <!-- Экран приветствия -->
+        <!-- Приветствие -->
         <div id="welcomeScreen" class="welcome-screen">
             <h1 class="glowing-title">Начни общение с Дедом Морозом прямо сейчас!</h1>
             <input type="text" id="usernameInput" class="input-field" placeholder="Твоё имя" maxlength="30" autocomplete="off">
@@ -343,7 +339,7 @@
         let currentUser = null;
         let currentChatWith = null;          // для Деда Мороза - выбранный пользователь
         let typingTimeout = null;
-        let santaMessagesListener = null;    // для управления слушателем печатания
+        let allMessages = [];                 // кеш всех сообщений (отсортированных по timestamp)
         const messagesRef = db.ref('messages');
         const usersRef = db.ref('users');
         const typingRef = db.ref('typing');
@@ -368,7 +364,7 @@
         const santaTypingStatus = document.getElementById('santaTypingStatus');
         const santaMobileBack = document.getElementById('santaMobileBack');
 
-        // ---------- ВСПОМОГАТЕЛЬНЫЕ ФУНКЦИИ (форматирование времени) ----------
+        // ---------- ФОРМАТИРОВАНИЕ ВРЕМЕНИ (МСК) ----------
         function formatMessageTime(timestamp) {
             if (!timestamp) return '';
             const date = new Date(timestamp);
@@ -428,7 +424,7 @@
             usersRef.child(username).set({ name: username, lastSeen: Date.now() });
         }
 
-        // ---------- УПРАВЛЕНИЕ ПЕЧАТАНИЕМ ----------
+        // ---------- ПЕЧАТАНИЕ ----------
         function setTypingStatus(isTyping, forUser = null) {
             if (!currentUser) return;
             if (currentUser.role === 'user') {
@@ -466,30 +462,7 @@
             setTypingStatus(false, to);
         }
 
-        // ---------- ОТОБРАЖЕНИЕ СООБЩЕНИЙ С РАЗДЕЛИТЕЛЯМИ ----------
-        function renderMessagesWithDividers(messages, container, isSantaView = false) {
-            container.innerHTML = '';
-            if (!messages.length) return;
-
-            let lastDate = null;
-            messages.forEach(msg => {
-                const msgDate = getDateString(msg.timestamp);
-                if (msgDate !== lastDate) {
-                    const divider = document.createElement('div');
-                    divider.classList.add('date-divider');
-                    divider.textContent = msgDate;
-                    container.appendChild(divider);
-                    lastDate = msgDate;
-                }
-
-                const isMyMessage = (msg.from === currentUser.name);
-                const showDelete = isSantaView && (currentUser.role === 'santa');
-                const msgEl = createMessageElement(msg, isMyMessage, showDelete, msg.id);
-                container.appendChild(msgEl);
-            });
-            container.scrollTop = container.scrollHeight;
-        }
-
+        // ---------- СОЗДАНИЕ ЭЛЕМЕНТА СООБЩЕНИЯ ----------
         function createMessageElement(message, isMyMessage, showDelete = false, messageId) {
             const div = document.createElement('div');
             div.classList.add('message');
@@ -521,6 +494,30 @@
             return div;
         }
 
+        // ---------- ОТРИСОВКА СООБЩЕНИЙ В КОНТЕЙНЕР С РАЗДЕЛИТЕЛЯМИ ----------
+        function renderMessages(container, messages, isSantaView = false) {
+            container.innerHTML = '';
+            if (!messages.length) return;
+
+            let lastDate = null;
+            messages.forEach(msg => {
+                const msgDate = getDateString(msg.timestamp);
+                if (msgDate !== lastDate) {
+                    const divider = document.createElement('div');
+                    divider.classList.add('date-divider');
+                    divider.textContent = msgDate;
+                    container.appendChild(divider);
+                    lastDate = msgDate;
+                }
+
+                const isMyMessage = (msg.from === currentUser.name);
+                const showDelete = isSantaView && (currentUser.role === 'santa');
+                const msgEl = createMessageElement(msg, isMyMessage, showDelete, msg.id);
+                container.appendChild(msgEl);
+            });
+            container.scrollTop = container.scrollHeight;
+        }
+
         // ---------- ПОДПИСКА ДЛЯ ПОЛЬЗОВАТЕЛЯ ----------
         function subscribeUserMessages() {
             const userName = currentUser.name;
@@ -534,9 +531,8 @@
                         messages.push(msg);
                     }
                 });
-                // Дополнительная сортировка на клиенте для гарантии
                 messages.sort((a,b) => a.timestamp - b.timestamp);
-                renderMessagesWithDividers(messages, userMessagesDiv, false);
+                renderMessages(userMessagesDiv, messages, false);
             });
         }
 
@@ -547,13 +543,13 @@
             });
         }
 
-        // ---------- ПОДПИСКА ДЛЯ ДЕДА МОРОЗА (ГЛАВНАЯ) ----------
+        // ---------- ПОДПИСКА ДЛЯ ДЕДА МОРОЗА (ЕДИНЫЙ СЛУШАТЕЛЬ) ----------
         function subscribeSantaMain() {
-            // Единый слушатель всех сообщений (отсортированных)
             const messagesQuery = messagesRef.orderByChild('timestamp');
             messagesQuery.on('value', (snapshot) => {
+                // Обновляем кеш всех сообщений
+                allMessages = [];
                 const usersSet = new Set();
-                const allMessages = [];
                 snapshot.forEach(child => {
                     const msg = child.val();
                     msg.id = child.key;
@@ -561,18 +557,15 @@
                     if (msg.from === 'Дед Мороз' && msg.to && msg.to !== 'Дед Мороз') usersSet.add(msg.to);
                     if (msg.to === 'Дед Мороз' && msg.from && msg.from !== 'Дед Мороз') usersSet.add(msg.from);
                 });
+                // Сортируем всё по времени (хотя Firebase отдаёт в порядке возрастания, перестрахуемся)
+                allMessages.sort((a,b) => a.timestamp - b.timestamp);
 
                 // Обновляем список пользователей
                 renderUserList(Array.from(usersSet));
 
-                // Если выбран конкретный пользователь, обновляем его чат
+                // Если выбран пользователь, обновляем его чат
                 if (currentChatWith) {
-                    const filtered = allMessages.filter(msg => 
-                        (msg.from === currentChatWith && msg.to === 'Дед Мороз') ||
-                        (msg.from === 'Дед Мороз' && msg.to === currentChatWith)
-                    );
-                    filtered.sort((a,b) => a.timestamp - b.timestamp);
-                    renderMessagesWithDividers(filtered, santaMessagesDiv, true);
+                    refreshSantaChat();
                 }
             });
         }
@@ -627,23 +620,39 @@
             });
         }
 
-        // Смена выбранного пользователя у Деда Мороза
+        // Установить текущего собеседника для Деда Мороза
         function setCurrentChatWith(username) {
             currentChatWith = username;
             santaCurrentUserSpan.textContent = username || 'Выберите пользователя';
             // Обновляем слушатель печатания
-            if (santaMessagesListener) {
-                typingRef.child(santaMessagesListener).off();
+            if (santaTypingStatus._typingListener) {
+                typingRef.child(santaTypingStatus._typingListener).off();
             }
             if (username) {
-                santaMessagesListener = username;
+                santaTypingStatus._typingListener = username;
                 typingRef.child(username).on('value', (snap) => {
                     santaTypingStatus.textContent = snap.val() ? `${username} печатает...` : '';
                 });
             } else {
                 santaTypingStatus.textContent = '';
             }
-            // Сообщения обновятся автоматически через основной слушатель
+            // Немедленно отображаем сообщения для выбранного пользователя из кеша
+            refreshSantaChat();
+        }
+
+        // Отобразить чат текущего пользователя (для Деда Мороза) на основе allMessages
+        function refreshSantaChat() {
+            if (!currentChatWith) {
+                santaMessagesDiv.innerHTML = '';
+                return;
+            }
+            const filtered = allMessages.filter(msg => 
+                (msg.from === currentChatWith && msg.to === 'Дед Мороз') ||
+                (msg.from === 'Дед Мороз' && msg.to === currentChatWith)
+            );
+            // Сообщения уже отсортированы в allMessages, но для надёжности:
+            filtered.sort((a,b) => a.timestamp - b.timestamp);
+            renderMessages(santaMessagesDiv, filtered, true);
         }
 
         // ---------- ЗАГРУЗКА ПРИЛОЖЕНИЯ ----------
